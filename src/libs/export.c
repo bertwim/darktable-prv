@@ -380,6 +380,8 @@ static void _export_button_clicked(GtkWidget *widget, dt_lib_export_t *d)
 
   _scale_optim();
   gtk_entry_set_text(GTK_ENTRY(d->scale), dt_conf_get_string(CONFIG_PREFIX "resizing_factor"));
+
+  dt_control_write_sidecar_files(); /* BwvB: always write xmp files for selection on export */
 }
 
 static void _scale_changed(GtkEntry *spin, dt_lib_export_t *d)
