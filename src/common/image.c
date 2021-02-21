@@ -61,6 +61,20 @@ typedef struct dt_undo_monochrome_t
   gboolean after;
 } dt_undo_monochrome_t;
 
+typedef struct dt_undo_datetime_t
+{
+  int32_t imgid;
+  char before[DT_DATETIME_LENGTH];
+  char after[DT_DATETIME_LENGTH];
+} dt_undo_datetime_t;
+
+typedef struct dt_undo_geotag_t
+{
+  int32_t imgid;
+  dt_image_geoloc_t before;
+  dt_image_geoloc_t after;
+} dt_undo_geotag_t;
+
 static void _pop_undo_execute(const int imgid, const gboolean before, const gboolean after);
 
 static int64_t max_image_position()
@@ -452,13 +466,6 @@ void dt_image_get_location(const int32_t imgid, dt_image_geoloc_t *geoloc)
   dt_image_cache_read_release(darktable.image_cache, img);
 }
 
-typedef struct dt_undo_geotag_t
-{
-  int32_t imgid;
-  dt_image_geoloc_t before;
-  dt_image_geoloc_t after;
-} dt_undo_geotag_t;
-
 static void _set_location(const int32_t imgid, const dt_image_geoloc_t *geoloc)
 {
   /* fetch image from cache */
@@ -468,13 +475,6 @@ static void _set_location(const int32_t imgid, const dt_image_geoloc_t *geoloc)
 
   dt_image_cache_write_release(darktable.image_cache, image, DT_IMAGE_CACHE_SAFE);
 }
-
-typedef struct dt_undo_datetime_t
-{
-  int32_t imgid;
-  char before[DT_DATETIME_LENGTH];
-  char after[DT_DATETIME_LENGTH];
-} dt_undo_datetime_t;
 
 static void _set_datetime(const int32_t imgid, const char *datetime)
 {
