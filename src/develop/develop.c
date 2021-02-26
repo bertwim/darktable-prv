@@ -1542,7 +1542,7 @@ static gboolean _dev_auto_apply_presets(dt_develop_t *dev)
     }
     else
     {
-      // we have no auto-apply order, so apply iop order, depending of the worflow
+      // we have no auto-apply order, so apply iop order, depending of the workflow
       GList *iop_list;
       if(is_scene_referred || is_workflow_none)
         iop_list = dt_ioppr_get_iop_order_list_version(DT_IOP_ORDER_V30);
@@ -1620,11 +1620,12 @@ static void _dev_merge_history(dt_develop_t *dev, const int imgid)
       // get all rowids
       GList *rowids = NULL;
 
+      // get the rowids in descending order since building the list will reverse the order
       DT_DEBUG_SQLITE3_PREPARE_V2(dt_database_get(darktable.db),
-                                  "SELECT rowid FROM memory.history ORDER BY rowid ASC",
+                                  "SELECT rowid FROM memory.history ORDER BY rowid DESC",
                                   -1, &stmt, NULL);
       while(sqlite3_step(stmt) == SQLITE_ROW)
-        rowids = g_list_append(rowids, GINT_TO_POINTER(sqlite3_column_int(stmt, 0)));
+        rowids = g_list_prepend(rowids, GINT_TO_POINTER(sqlite3_column_int(stmt, 0)));
       sqlite3_finalize(stmt);
 
       // update num accordingly

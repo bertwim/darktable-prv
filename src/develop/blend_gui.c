@@ -60,7 +60,7 @@ const dt_develop_name_value_t dt_develop_blend_mode_names[]
         { NC_("blendmode", "linearlight"), DEVELOP_BLEND_LINEARLIGHT },
         { NC_("blendmode", "pinlight"), DEVELOP_BLEND_PINLIGHT },
         { NC_("blendmode", "lightness"), DEVELOP_BLEND_LIGHTNESS },
-        { NC_("blendmode", "chroma"), DEVELOP_BLEND_CHROMA },
+        { NC_("blendmode", "chromaticity"), DEVELOP_BLEND_CHROMATICITY },
         { NC_("blendmode", "hue"), DEVELOP_BLEND_HUE },
         { NC_("blendmode", "color"), DEVELOP_BLEND_COLOR },
         { NC_("blendmode", "coloradjustment"), DEVELOP_BLEND_COLORADJUST },
@@ -69,7 +69,7 @@ const dt_develop_name_value_t dt_develop_blend_mode_names[]
         { NC_("blendmode", "Lab L-channel"), DEVELOP_BLEND_LAB_L },
         { NC_("blendmode", "Lab a-channel"), DEVELOP_BLEND_LAB_A },
         { NC_("blendmode", "Lab b-channel"), DEVELOP_BLEND_LAB_B },
-        { NC_("blendmode", "HSV lightness"), DEVELOP_BLEND_HSV_LIGHTNESS },
+        { NC_("blendmode", "HSV value"), DEVELOP_BLEND_HSV_VALUE },
         { NC_("blendmode", "HSV color"), DEVELOP_BLEND_HSV_COLOR },
         { NC_("blendmode", "RGB red channel"), DEVELOP_BLEND_RGB_R },
         { NC_("blendmode", "RGB green channel"), DEVELOP_BLEND_RGB_G },
@@ -256,6 +256,8 @@ enum _channel_indexes
   CHANNEL_INDEX_Cz = 5,
   CHANNEL_INDEX_hz = 6,
 };
+
+static void _blendop_blendif_update_tab(dt_iop_module_t *module, const int tab);
 
 static inline dt_iop_colorspace_type_t _blendif_colorpicker_cst(dt_iop_gui_blend_data_t *data)
 {
@@ -636,9 +638,25 @@ static void _blendop_blend_mode_callback(GtkWidget *combo, dt_iop_gui_blend_data
 
 static void _blendop_masks_combine_callback(GtkWidget *combo, dt_iop_gui_blend_data_t *data)
 {
+  dt_develop_blend_params_t *const d = data->module->blend_params;
+
   const unsigned combine = GPOINTER_TO_UINT(dt_bauhaus_combobox_get_data(data->masks_combine_combo));
-  data->module->blend_params->mask_combine &= ~(DEVELOP_COMBINE_INV | DEVELOP_COMBINE_INCL);
-  data->module->blend_params->mask_combine |= combine;
+  d->mask_combine &= ~(DEVELOP_COMBINE_INV | DEVELOP_COMBINE_INCL);
+  d->mask_combine |= combine;
+
+  // inverts the parametric mask channels that are not used
+  if(data->blendif_support && data->blendif_inited)
+  {
+    const uint32_t mask = data->csp == DEVELOP_BLEND_CS_LAB ? DEVELOP_BLENDIF_Lab_MASK : DEVELOP_BLENDIF_RGB_MASK;
+    const uint32_t unused_channels = mask & ~d->blendif;
+    d->blendif &= ~(unused_channels << 16);
+    if(d->mask_combine & DEVELOP_COMBINE_INCL)
+    {
+      d->blendif |= unused_channels << 16;
+    }
+    _blendop_blendif_update_tab(data->module, data->tab);
+  }
+
   _blendif_clean_output_channels(data->module);
   dt_dev_add_history_item(darktable.develop, data->module, TRUE);
 }
@@ -2570,7 +2588,7 @@ void dt_iop_gui_update_blending(dt_iop_module_t *module)
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_LAB_B);
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_LAB_COLOR);
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_LIGHTNESS);
-        _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_CHROMA);
+        _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_CHROMATICITY);
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_HUE);
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_COLOR);
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_COLORADJUST);
@@ -2582,8 +2600,8 @@ void dt_iop_gui_update_blending(dt_iop_module_t *module)
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_RGB_G);
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_RGB_B);
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_LIGHTNESS);
-        _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_HSV_LIGHTNESS);
-        _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_CHROMA);
+        _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_HSV_VALUE);
+        _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_CHROMATICITY);
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_HSV_COLOR);
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_HUE);
         _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_COLOR);
@@ -2611,7 +2629,7 @@ void dt_iop_gui_update_blending(dt_iop_module_t *module)
       _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_RGB_B);
       dt_bauhaus_combobox_add_section(bd->blend_modes_combo, _("chrominance & luminance modes"));
       _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_LIGHTNESS);
-      _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_CHROMA);
+      _add_blendmode_combo(bd->blend_modes_combo, DEVELOP_BLEND_CHROMATICITY);
     }
     bd->blend_modes_csp = bd->csp;
   }
@@ -2785,6 +2803,17 @@ void dt_iop_gui_blending_lose_focus(dt_iop_module_t *module)
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(bd->suppress), FALSE);
     module->request_mask_display = DT_DEV_PIXELPIPE_DISPLAY_NONE;
     module->suppress_mask = 0;
+
+    if(bd->masks_support)
+    {
+      // unselect all tools
+      gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(bd->masks_edit), FALSE);
+      dt_masks_set_edit_mode(module, DT_MASKS_EDIT_OFF);
+
+      for(int k=0; k < DEVELOP_MASKS_NB_SHAPES; k++)
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(bd->masks_shapes[k]), FALSE);
+    }
+
     dt_pthread_mutex_lock(&bd->lock);
     bd->save_for_leave = DT_DEV_PIXELPIPE_DISPLAY_NONE;
     if(bd->timeout_handle)

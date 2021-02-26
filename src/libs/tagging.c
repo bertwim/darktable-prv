@@ -1396,9 +1396,10 @@ static void _pop_menu_dictionary_delete_tag(GtkWidget *menuitem, dt_lib_module_t
   DT_DEBUG_SQLITE3_BIND_INT(stmt, 1, tagid);
   while(sqlite3_step(stmt) == SQLITE_ROW)
   {
-    tagged_images = g_list_append(tagged_images, GINT_TO_POINTER(sqlite3_column_int(stmt, 0)));
+    tagged_images = g_list_prepend(tagged_images, GINT_TO_POINTER(sqlite3_column_int(stmt, 0)));
   }
   sqlite3_finalize(stmt);
+  tagged_images = g_list_reverse(tagged_images); // list was built in reverse order, so unreverse it
 
   dt_tag_remove(tagid, TRUE);
   dt_control_log(_("tag %s removed"), tagname);
@@ -1722,7 +1723,7 @@ static void _pop_menu_dictionary_edit_tag(GtkWidget *menuitem, dt_lib_module_t *
       if (!newtag[0])
         message = _("empty tag is not allowed, aborting");
       if(strchr(newtag, '|') != 0)
-        message = _("'|' character is not allowed for renaming tag.\nto modify the hierachy use rename path instead. Aborting.");
+        message = _("'|' character is not allowed for renaming tag.\nto modify the hierarchy use rename path instead. Aborting.");
       if (message)
       {
         GtkWidget *warning_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog), GTK_DIALOG_MODAL,
