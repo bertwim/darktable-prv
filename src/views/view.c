@@ -151,81 +151,29 @@ static uint32_t default_flags()
 /** load a view module */
 static int dt_view_load_module(void *v, const char *libname, const char *module_name)
 {
-  dt_view_t *view = (dt_view_t *)v;
+  dt_view_t *module = (dt_view_t *)v;
+  g_strlcpy(module->module_name, module_name, sizeof(module->module_name));
 
-  view->data = NULL;
-  view->vscroll_size = view->vscroll_viewport_size = 1.0;
-  view->hscroll_size = view->hscroll_viewport_size = 1.0;
-  view->vscroll_pos = view->hscroll_pos = 0.0;
-  view->height = view->width = 100; // set to non-insane defaults before first expose/configure.
-  g_strlcpy(view->module_name, module_name, sizeof(view->module_name));
-  dt_print(DT_DEBUG_CONTROL, "[view_load_module] loading view `%s' from %s\n", module_name, libname);
-  view->module = g_module_open(libname, G_MODULE_BIND_LAZY | G_MODULE_BIND_LOCAL);
-  if(!view->module)
-  {
-    fprintf(stderr, "[view_load_module] could not open %s (%s)!\n", libname, g_module_error());
-    goto error;
-  }
-  int (*version)();
-  if(!g_module_symbol(view->module, "dt_module_dt_version", (gpointer) & (version))) goto error;
-  if(version() != dt_version())
-  {
-    fprintf(stderr, "[view_load_module] `%s' is compiled for another version of dt (module %d != dt %d) !\n",
-            libname, version(), dt_version());
-    goto error;
-  }
-  if(!g_module_symbol(view->module, "name", (gpointer) & (view->name))) view->name = NULL;
-  if(!g_module_symbol(view->module, "view", (gpointer) & (view->view))) view->view = NULL;
-  if(!g_module_symbol(view->module, "flags", (gpointer) & (view->flags))) view->flags = default_flags;
-  if(!g_module_symbol(view->module, "init", (gpointer) & (view->init))) view->init = NULL;
-  if(!g_module_symbol(view->module, "gui_init", (gpointer) & (view->gui_init))) view->gui_init = NULL;
-  if(!g_module_symbol(view->module, "cleanup", (gpointer) & (view->cleanup))) view->cleanup = NULL;
-  if(!g_module_symbol(view->module, "expose", (gpointer) & (view->expose))) view->expose = NULL;
-  if(!g_module_symbol(view->module, "try_enter", (gpointer) & (view->try_enter))) view->try_enter = NULL;
-  if(!g_module_symbol(view->module, "enter", (gpointer) & (view->enter))) view->enter = NULL;
-  if(!g_module_symbol(view->module, "leave", (gpointer) & (view->leave))) view->leave = NULL;
-  if(!g_module_symbol(view->module, "reset", (gpointer) & (view->reset))) view->reset = NULL;
-  if(!g_module_symbol(view->module, "mouse_enter", (gpointer) & (view->mouse_enter)))
-    view->mouse_enter = NULL;
-  if(!g_module_symbol(view->module, "mouse_leave", (gpointer) & (view->mouse_leave)))
-    view->mouse_leave = NULL;
-  if(!g_module_symbol(view->module, "mouse_moved", (gpointer) & (view->mouse_moved)))
-    view->mouse_moved = NULL;
-  if(!g_module_symbol(view->module, "button_released", (gpointer) & (view->button_released)))
-    view->button_released = NULL;
-  if(!g_module_symbol(view->module, "button_pressed", (gpointer) & (view->button_pressed)))
-    view->button_pressed = NULL;
-  if(!g_module_symbol(view->module, "key_pressed", (gpointer) & (view->key_pressed)))
-    view->key_pressed = NULL;
-  if(!g_module_symbol(view->module, "key_released", (gpointer) & (view->key_released)))
-    view->key_released = NULL;
-  if(!g_module_symbol(view->module, "configure", (gpointer) & (view->configure))) view->configure = NULL;
-  if(!g_module_symbol(view->module, "scrolled", (gpointer) & (view->scrolled))) view->scrolled = NULL;
-  if(!g_module_symbol(view->module, "scrollbar_changed", (gpointer) & (view->scrollbar_changed)))
-    view->scrollbar_changed = NULL;
-  if(!g_module_symbol(view->module, "init_key_accels", (gpointer) & (view->init_key_accels)))
-    view->init_key_accels = NULL;
-  if(!g_module_symbol(view->module, "connect_key_accels", (gpointer) & (view->connect_key_accels)))
-    view->connect_key_accels = NULL;
-  if(!g_module_symbol(view->module, "mouse_actions", (gpointer) & (view->mouse_actions)))
-    view->mouse_actions = NULL;
+#define INCLUDE_API_FROM_MODULE_LOAD "view_load_module"
+#include "views/view_api.h"
 
-  view->accel_closures = NULL;
+  module->data = NULL;
+  module->vscroll_size = module->vscroll_viewport_size = 1.0;
+  module->hscroll_size = module->hscroll_viewport_size = 1.0;
+  module->vscroll_pos = module->hscroll_pos = 0.0;
+  module->height = module->width = 100; // set to non-insane defaults before first expose/configure.
+  module->accel_closures = NULL;
 
-  if(!strcmp(view->module_name, "darkroom")) darktable.develop = (dt_develop_t *)view->data;
+  if(!strcmp(module->module_name, "darkroom")) darktable.develop = (dt_develop_t *)module->data;
 
 #ifdef USE_LUA
-  dt_lua_register_view(darktable.lua_state.state, view);
+  dt_lua_register_view(darktable.lua_state.state, module);
 #endif
 
-  if(view->init) view->init(view);
-  if(darktable.gui && view->init_key_accels) view->init_key_accels(view);
+  if(module->init) module->init(module);
+  if(darktable.gui && module->init_key_accels) module->init_key_accels(module);
 
   return 0;
-
-error:
-  if(view->module) g_module_close(view->module);
-  return 1;
 }
 
 /** unload, cleanup */
@@ -757,7 +705,8 @@ static void _images_to_act_on_insert_in_list(GList **list, const int imgid, gboo
 }
 
 // get the list of images to act on during global changes (libs, accels)
-const GList *dt_view_get_images_to_act_on(const gboolean only_visible, const gboolean force)
+const GList *dt_view_get_images_to_act_on(const gboolean only_visible, const gboolean force,
+                                          const gboolean ordering)
 {
   /** Here's how it works
    *
@@ -771,12 +720,15 @@ const GList *dt_view_get_images_to_act_on(const gboolean only_visible, const gbo
    *  the mouse can be outside thumbtable in case of filmstrip + mouse in center widget
    *
    *  if only_visible is FALSE, then it will add also not visible images because of grouping
+   *  force define if we try to use cache or not
+   *  if ordering is TRUE, we return the list in the gui order. Otherwise the order is undefined (but quicker)
    **/
 
   const int mouseover = dt_control_get_mouse_over_id();
 
   // if possible, we return the cached list
   if(!force && darktable.view_manager->act_on.ok && darktable.view_manager->act_on.image_over == mouseover
+     && darktable.view_manager->act_on.ordering == ordering
      && darktable.view_manager->act_on.inside_table == dt_ui_thumbtable(darktable.gui->ui)->mouse_inside
      && g_slist_length(darktable.view_manager->act_on.active_imgs)
             == g_slist_length(darktable.view_manager->active_images))
@@ -825,45 +777,14 @@ const GList *dt_view_get_images_to_act_on(const gboolean only_visible, const gbo
 
         // first, we try to return cached list if we wher already
         // inside sel and the selection has not changed
-        if(!force
-           && darktable.view_manager->act_on.ok
-           && darktable.view_manager->act_on.image_over_inside_sel
-           && darktable.view_manager->act_on.inside_table)
+        if(!force && darktable.view_manager->act_on.ok && darktable.view_manager->act_on.image_over_inside_sel
+           && darktable.view_manager->act_on.inside_table && darktable.view_manager->act_on.ordering == ordering)
         {
           return darktable.view_manager->act_on.images;
         }
 
-        if(only_visible)
-        {
-          // we don't want to get image hidden because of grouping
-          DT_DEBUG_SQLITE3_PREPARE_V2
-            (dt_database_get(darktable.db),
-             "SELECT DISTINCT m.imgid"
-             " FROM memory.collected_images as m"
-             " WHERE m.imgid IN (SELECT s.imgid FROM main.selected_images as s)"
-             " ORDER BY m.rowid DESC",
-             -1, &stmt, NULL);
-        }
-        else
-        {
-          // we need to get hidden grouped images too, and the
-          // selection already contains them :)
-          DT_DEBUG_SQLITE3_PREPARE_V2
-            (dt_database_get(darktable.db),
-             "SELECT DISTINCT imgid"
-             " FROM main.selected_images"
-             " ORDER BY rowid DESC", -1, &stmt, NULL);
-        }
-
-        while(stmt != NULL && sqlite3_step(stmt) == SQLITE_ROW)
-        {
-          // we don't use _images_to_act_on_insert_in_list for
-          // performance reason and because the query already take
-          // care of eventual duplicates
-          l = g_list_prepend(l, GINT_TO_POINTER(sqlite3_column_int(stmt, 0)));
-        }
-        // put the list in right order as we have prepend for performance reasons
-        if(stmt) sqlite3_finalize(stmt);
+        // we return the list of the selection
+        l = dt_selection_get_list(darktable.selection, only_visible, ordering);
       }
       else
       {
@@ -898,26 +819,14 @@ const GList *dt_view_get_images_to_act_on(const gboolean only_visible, const gbo
     else
     {
       // collumn 4
-      sqlite3_stmt *stmt;
-      DT_DEBUG_SQLITE3_PREPARE_V2
-        (dt_database_get(darktable.db),
-         "SELECT DISTINCT m.imgid"
-         " FROM memory.collected_images as m"
-         " WHERE m.imgid IN (SELECT s.imgid FROM main.selected_images as s)"
-         " ORDER BY m.rowid DESC", -1, &stmt, NULL);
-      while(stmt != NULL && sqlite3_step(stmt) == SQLITE_ROW)
-      {
-        // we don't use _images_to_act_on_insert_in_list for
-        // performance reason and because the query already take care
-        // of eventual duplicates
-        l = g_list_prepend(l, GINT_TO_POINTER(sqlite3_column_int(stmt, 0)));
-      }
-      if(stmt) sqlite3_finalize(stmt);
+      // we return the list of the selection
+      l = dt_selection_get_list(darktable.selection, only_visible, ordering);
     }
   }
 
   // let's register the new list as cached
   darktable.view_manager->act_on.image_over_inside_sel = inside_sel;
+  darktable.view_manager->act_on.ordering = ordering;
   darktable.view_manager->act_on.image_over = mouseover;
   g_list_free(darktable.view_manager->act_on.images);
   darktable.view_manager->act_on.images = l;
@@ -927,6 +836,103 @@ const GList *dt_view_get_images_to_act_on(const gboolean only_visible, const gbo
   darktable.view_manager->act_on.ok = TRUE;
 
   return darktable.view_manager->act_on.images;
+}
+
+// get the query to retrieve images to act on. this is useful to speedup actions if they already use sqlite queries
+gchar *dt_view_get_images_to_act_on_query(const gboolean only_visible)
+{
+  /** Here's how it works
+   *
+   *             mouse over| x | x | x |   |   |
+   *     mouse inside table| x | x |   |   |   |
+   * mouse inside selection| x |   |   |   |   |
+   *          active images| ? | ? | x |   | x |
+   *                       |   |   |   |   |   |
+   *                       | S | O | O | S | A |
+   *  S = selection ; O = mouseover ; A = active images
+   *  the mouse can be outside thumbtable in case of filmstrip + mouse in center widget
+   *
+   *  if only_visible is FALSE, then it will add also not visible images because of grouping
+   *  due to dt_selection_get_list_query limitation, order is always considered as undefined
+   **/
+
+  const int mouseover = dt_control_get_mouse_over_id();
+
+  GList *l = NULL;
+  gboolean inside_sel = FALSE;
+  if(mouseover > 0)
+  {
+    // collumn 1,2,3
+    if(dt_ui_thumbtable(darktable.gui->ui)->mouse_inside)
+    {
+      // collumn 1,2
+      sqlite3_stmt *stmt;
+      gchar *query = dt_util_dstrcat(NULL, "SELECT imgid FROM main.selected_images WHERE imgid =%d", mouseover);
+      DT_DEBUG_SQLITE3_PREPARE_V2(dt_database_get(darktable.db), query, -1, &stmt, NULL);
+      if(stmt != NULL && sqlite3_step(stmt) == SQLITE_ROW)
+      {
+        inside_sel = TRUE;
+        sqlite3_finalize(stmt);
+      }
+      g_free(query);
+
+      if(inside_sel)
+      {
+        // collumn 1
+        return dt_selection_get_list_query(darktable.selection, only_visible, FALSE);
+      }
+      else
+      {
+        // collumn 2
+        _images_to_act_on_insert_in_list(&l, mouseover, only_visible);
+      }
+    }
+    else
+    {
+      // collumn 3
+      _images_to_act_on_insert_in_list(&l, mouseover, only_visible);
+      // be absolutely sure we have the id in the list (in darkroom,
+      // the active image can be out of collection)
+      if(!only_visible) _images_to_act_on_insert_in_list(&l, mouseover, TRUE);
+    }
+  }
+  else
+  {
+    // collumn 4,5
+    if(darktable.view_manager->active_images)
+    {
+      // collumn 5
+      for(GSList *ll = darktable.view_manager->active_images; ll; ll = g_slist_next(ll))
+      {
+        const int id = GPOINTER_TO_INT(ll->data);
+        _images_to_act_on_insert_in_list(&l, id, only_visible);
+        // be absolutely sure we have the id in the list (in darkroom,
+        // the active image can be out of collection)
+        if(!only_visible) _images_to_act_on_insert_in_list(&l, id, TRUE);
+      }
+    }
+    else
+    {
+      // collumn 4
+      return dt_selection_get_list_query(darktable.selection, only_visible, FALSE);
+    }
+  }
+
+  // if we don't return the selection, we return the list of imgid separeted by comma
+  // in the form it can be used inside queries
+  gchar *images = NULL;
+  while(l)
+  {
+    images = dt_util_dstrcat(images, "%d,", GPOINTER_TO_INT(l->data));
+    l = g_list_next(l);
+  }
+  if(images)
+  {
+    images[strlen(images) - 1] = '\0';
+  }
+  else
+    images = dt_util_dstrcat(NULL, " ");
+  return images;
 }
 
 // get the main image to act on during global changes (libs, accels)
