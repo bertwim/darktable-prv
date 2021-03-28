@@ -190,23 +190,14 @@ static void _lib_import_tethered_callback(GtkToggleButton *button, gpointer data
   dt_ctl_switch_mode_to("tethering");
 }
 
-static void _remove_child(GtkWidget *widget, gpointer data)
-{
-  GtkContainer *cont = (GtkContainer *)data;
-  gtk_container_remove(cont, widget);
-}
-
 /** update the device list */
 void _lib_import_ui_devices_update(dt_lib_module_t *self)
 {
   dt_lib_import_t *d = (dt_lib_import_t *)self->data;
 
   /* cleanup of widgets in devices container*/
-  GtkContainer *cont = GTK_CONTAINER(d->devices);
-  gtk_container_foreach(cont, _remove_child, cont);
-
-  cont = GTK_CONTAINER(d->locked_devices);
-  gtk_container_foreach(cont, _remove_child, cont);
+  dt_gui_container_remove_children(GTK_CONTAINER(d->devices));
+  dt_gui_container_remove_children(GTK_CONTAINER(d->locked_devices));
 
   dt_camctl_t *camctl = (dt_camctl_t *)darktable.camctl;
   dt_pthread_mutex_lock(&camctl->lock);
@@ -812,8 +803,8 @@ static void _import_from_dialog_new(dt_lib_module_t* self)
   dt_osx_disallow_fullscreen(d->from.dialog);
 #endif
   gtk_window_set_default_size(GTK_WINDOW(d->from.dialog),
-                              DT_PIXEL_APPLY_DPI(dt_conf_get_int("ui_last/import_dialog_width")),
-                              DT_PIXEL_APPLY_DPI(dt_conf_get_int("ui_last/import_dialog_height")));
+                              dt_conf_get_int("ui_last/import_dialog_width"),
+                              dt_conf_get_int("ui_last/import_dialog_height"));
   gtk_window_set_transient_for(GTK_WINDOW(d->from.dialog), GTK_WINDOW(win));
   GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(d->from.dialog));
   GtkWidget *import_list = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -1183,13 +1174,13 @@ void gui_init(dt_lib_module_t *self)
   d->metadata.box = d->exp.widgets;
   dt_import_metadata_init(&d->metadata);
 
-  #ifdef USE_LUA
-    /* initialize the lua area  and make sure it survives its parent's destruction*/
-    d->extra_lua_widgets = gtk_box_new(GTK_ORIENTATION_VERTICAL,5);
-    g_object_ref_sink(d->extra_lua_widgets);
-    gtk_box_pack_start(GTK_BOX(d->exp.widgets), d->extra_lua_widgets, FALSE, FALSE, 0);
-    gtk_container_foreach(GTK_CONTAINER(d->extra_lua_widgets), reset_child, NULL);
-  #endif
+#ifdef USE_LUA
+  /* initialize the lua area  and make sure it survives its parent's destruction*/
+  d->extra_lua_widgets = gtk_box_new(GTK_ORIENTATION_VERTICAL,5);
+  g_object_ref_sink(d->extra_lua_widgets);
+  gtk_box_pack_start(GTK_BOX(d->exp.widgets), d->extra_lua_widgets, FALSE, FALSE, 0);
+  gtk_container_foreach(GTK_CONTAINER(d->extra_lua_widgets), reset_child, NULL);
+#endif
 
   gtk_widget_show_all(self->widget);
   gtk_widget_set_no_show_all(self->widget, TRUE);
